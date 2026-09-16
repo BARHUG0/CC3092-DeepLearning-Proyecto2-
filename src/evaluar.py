@@ -8,7 +8,7 @@ import os
 import numpy as np
 import politicas
 from ale_utils import crear_entorno, ejecutar_episodio
-from stable_baselines3 import DQN
+from stable_baselines3 import DQN, PPO
 
 import extractores
 from entorno import ApiladorFrames, NOMBRE_ENTORNO, crear_entorno_preprocesado, envolver_atari
@@ -19,25 +19,31 @@ EXTRACTORES_CUSTOM = {
 }
 
 
-def cargar_modelo(ruta_modelo: str) -> DQN:
-    custom_objects = {}
+def leer_config(ruta_modelo: str) -> dict:
     config_ruta = os.path.join(os.path.dirname(ruta_modelo), "config.json")
-    if os.path.exists(config_ruta):
-        with open(config_ruta, encoding="utf-8") as archivo:
-            config = json.load(archivo)
-        if config.get("backbone") in EXTRACTORES_CUSTOM:
-            custom_objects["features_extractor_class"] = EXTRACTORES_CUSTOM[config["backbone"]]
-        if config.get("dueling", False):
-            custom_objects["policy_class"] = politicas.PoliticaDuelingDQN
-    return DQN.load(ruta_modelo, custom_objects=custom_objects)
+    if not os.path.exists(config_ruta):
+        return {}
+    with open(config_ruta, encoding="utf-8") as archivo:
+        return json.load(archivo)
 
 
-def predecir(modelo: DQN, observacion) -> int:
+def cargar_modelo(ruta_modelo: str) -> DQN | PPO:
+    config = leer_config(ruta_modelo)
+    custom_objects = {}
+    if config.get("backbone") in EXTRACTORES_CUSTOM:
+        custom_objects["features_extractor_class"] = EXTRACTORES_CUSTOM[config["backbone"]]
+    if config.get("dueling", False):
+        custom_objects["policy_class"] = politicas.PoliticaDuelingDQN
+    clase = PPO if config.get("algoritmo") == "ppo" else DQN
+    return clase.load(ruta_modelo, custom_objects=custom_objects)
+
+
+def predecir(modelo: DQN | PPO, observacion) -> int:
     acciones, _ = modelo.predict(observacion, deterministic=True)
     return int(acciones)
 
 
-def ejecutar_episodios(modelo: DQN, env, n_episodios: int, semilla: int) -> list[float]:
+def ejecutar_episodios(modelo: DQN | PPO, env, n_episodios: int, semilla: int) -> list[float]:
     puntajes = []
     env.reset(seed=semilla)
     try:
@@ -50,7 +56,7 @@ def ejecutar_episodios(modelo: DQN, env, n_episodios: int, semilla: int) -> list
     return puntajes
 
 
-def evaluar(modelo: DQN, n_episodios: int = 5, semilla: int = 0, escala_grises: bool = True) -> list[float]:
+def evaluar(modelo: DQN | PPO, n_episodios: int = 5, semilla: int = 0, escala_grises: bool = True) -> list[float]:
     env = crear_entorno_preprocesado(
         escala_grises=escala_grises,
         vida_termina_episodio=False,
@@ -60,7 +66,7 @@ def evaluar(modelo: DQN, n_episodios: int = 5, semilla: int = 0, escala_grises: 
 
 
 def generar_video(
-    modelo: DQN,
+    modelo: DQN | PPO,
     carpeta_video: str,
     n_episodios: int = 1,
     semilla: int = 0,
@@ -92,12 +98,24 @@ if __name__ == "__main__":
     argumentos = parser.parse_args()
 
     modelo = cargar_modelo(argumentos.modelo)
-    puntajes = evaluar(modelo, n_episodios=argumentos.episodios, semilla=argumentos.semilla)
+    escala_grises = leer_config(argumentos.modelo).get("escala_grises", True)
+    puntajes = evaluar(
+        modelo,
+        n_episodios=argumentos.episodios,
+        semilla=argumentos.semilla,
+        escala_grises=escala_grises,
+    )
     print(f"max {max(puntajes):.0f} / media {np.mean(puntajes):.1f}")
     rutas_video = []
     if argumentos.video:
         os.makedirs(argumentos.video, exist_ok=True)
-        rutas_video = generar_video(modelo, argumentos.video, n_episodios=argumentos.episodios_video, semilla=argumentos.semilla)
+        rutas_video = generar_video(
+            modelo,
+            argumentos.video,
+            n_episodios=argumentos.episodios_video,
+            semilla=argumentos.semilla,
+            escala_grises=escala_grises,
+        )
     resultado = {
         "modelo": argumentos.modelo,
         "puntajes": puntajes,

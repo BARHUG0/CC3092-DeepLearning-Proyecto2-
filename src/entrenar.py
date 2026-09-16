@@ -1,8 +1,10 @@
 from __future__ import annotations
 
 import argparse
+import glob
 import json
 import os
+import re
 from datetime import datetime
 
 import torch
@@ -42,13 +44,33 @@ def construir_modelo(config: dict, vec_env) -> DQN | PPO:
     raise ValueError(f"algoritmo desconocido: {config['algoritmo']}")
 
 
+def ultimo_checkpoint(carpeta: str) -> str | None:
+    rutas = glob.glob(os.path.join(carpeta, "checkpoint_*_steps.zip"))
+    if not rutas:
+        return None
+    return max(rutas, key=lambda ruta: int(re.search(r"_(\d+)_steps", ruta).group(1)))
+
+
+def cargar_para_reanudar(config: dict, carpeta: str, vec_env) -> DQN | PPO | None:
+    ruta = ultimo_checkpoint(carpeta)
+    if ruta is None:
+        print("no hay checkpoints, se entrena desde cero")
+        return None
+    clase = PPO if config["algoritmo"] == "ppo" else DQN
+    modelo = clase.load(ruta, env=vec_env)
+    print(f"reanudando desde {os.path.basename(ruta)}, {modelo.num_timesteps} pasos ya entrenados")
+    if config["algoritmo"] == "dqn":
+        print("aviso: el replay buffer no se guarda, el agente reanuda con memoria vacia")
+    return modelo
+
+
 def _extractor_del_modelo(modelo: DQN | PPO):
     if hasattr(modelo.policy, "q_net"):
         return modelo.policy.q_net.features_extractor
     return modelo.policy.features_extractor
 
 
-def entrenar(config: dict) -> str:
+def entrenar(config: dict, reanudar: bool = False) -> str:
     run_id = config["run_id"]
     carpeta = os.path.join("modelos", run_id)
     os.makedirs(carpeta, exist_ok=True)
@@ -68,19 +90,23 @@ def entrenar(config: dict) -> str:
         vida_termina_episodio=False,
         recorte_recompensa=False,
     )
-    modelo = construir_modelo(config, vec_env)
-    with open(os.path.join(carpeta, "config.json"), "w", encoding="utf-8") as archivo:
-        json.dump(
-            {
-                **config,
-                "fecha": datetime.now().isoformat(),
-                "parametros_extractor": extractores.contar_parametros(_extractor_del_modelo(modelo)),
-                "cuda": torch.cuda.is_available(),
-            },
-            archivo,
-            indent=2,
-            ensure_ascii=False,
-        )
+    modelo = cargar_para_reanudar(config, carpeta, vec_env) if reanudar else None
+    reanudado = modelo is not None
+    if modelo is None:
+        modelo = construir_modelo(config, vec_env)
+    if not reanudado:
+        with open(os.path.join(carpeta, "config.json"), "w", encoding="utf-8") as archivo:
+            json.dump(
+                {
+                    **config,
+                    "fecha": datetime.now().isoformat(),
+                    "parametros_extractor": extractores.contar_parametros(_extractor_del_modelo(modelo)),
+                    "cuda": torch.cuda.is_available(),
+                },
+                archivo,
+                indent=2,
+                ensure_ascii=False,
+            )
     evaluacion = config.get("evaluacion", {})
     callbacks = [
         CheckpointCallback(
@@ -96,11 +122,16 @@ def entrenar(config: dict) -> str:
             deterministic=True,
         ),
     ]
-    modelo.learn(
-        total_timesteps=config["pasos"],
-        callback=callbacks,
-        tb_log_name=run_id,
-    )
+    pasos_restantes = config["pasos"] - modelo.num_timesteps
+    if pasos_restantes > 0:
+        modelo.learn(
+            total_timesteps=pasos_restantes,
+            callback=callbacks,
+            tb_log_name=run_id,
+            reset_num_timesteps=not reanudado,
+        )
+    else:
+        print(f"el run ya alcanzo {modelo.num_timesteps} de {config['pasos']} pasos, nada que entrenar")
     modelo.save(os.path.join(carpeta, "modelo_final"))
     vec_env.close()
     eval_env.close()
@@ -110,7 +141,12 @@ def entrenar(config: dict) -> str:
 if __name__ == "__main__":
     parser = argparse.ArgumentParser()
     parser.add_argument("--config", required=True)
+    parser.add_argument(
+        "--reanudar",
+        action="store_true",
+        help="continua desde el ultimo checkpoint del run, sin reiniciar el contador de pasos",
+    )
     argumentos = parser.parse_args()
     with open(argumentos.config, encoding="utf-8") as archivo:
         config = yaml.safe_load(archivo)
-    entrenar(config)
+    entrenar(config, reanudar=argumentos.reanudar)

@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from collections import deque
 from functools import partial
 
 import cv2
@@ -66,11 +67,42 @@ def envolver_atari(
     return env
 
 
+class ApiladorFrames(gym.ObservationWrapper):
+    """Apila los ultimos n_apilados frames por el eje de canales, equivalente a VecFrameStack con channels_order='first'."""
+
+    def __init__(self, env: gym.Env, n_apilados: int = 4) -> None:
+        super().__init__(env)
+        self.n_apilados = n_apilados
+        self.cola: deque[np.ndarray] = deque(maxlen=n_apilados)
+        canales, alto, ancho = env.observation_space.shape
+        self.observation_space = spaces.Box(
+            low=0,
+            high=255,
+            shape=(canales * n_apilados, alto, ancho),
+            dtype=env.observation_space.dtype,
+        )
+
+    def reset(self, **kwargs) -> tuple[np.ndarray, dict]:
+        self.cola.clear()
+        observacion, info = super().reset(**kwargs)
+        return self._apilar(observacion), info
+
+    def observation(self, observacion: np.ndarray) -> np.ndarray:
+        self.cola.append(observacion)
+        return self._apilar(observacion)
+
+    def _apilar(self, observacion: np.ndarray) -> np.ndarray:
+        while len(self.cola) < self.n_apilados:
+            self.cola.append(observacion)
+        return np.concatenate(list(self.cola), axis=0)
+
+
 def crear_entorno_preprocesado(
     nombre_entorno: str = NOMBRE_ENTORNO,
     escala_grises: bool = True,
     vida_termina_episodio: bool = True,
     recorte_recompensa: bool = True,
+    n_apilados: int = 4,
     **kwargs,
 ) -> gym.Env:
     """Entorno individual preprocesado, para evaluación y video. frameskip=1 evita doble salto de frames con v5."""
@@ -78,7 +110,8 @@ def crear_entorno_preprocesado(
     kwargs.setdefault("repeat_action_probability", 0.0)
     kwargs.setdefault("full_action_space", False)
     env = gym.make(nombre_entorno, **kwargs)
-    return envolver_atari(env, escala_grises, vida_termina_episodio, recorte_recompensa)
+    env = envolver_atari(env, escala_grises, vida_termina_episodio, recorte_recompensa)
+    return ApiladorFrames(env, n_apilados=n_apilados)
 
 
 def crear_entornos_vectorizados(

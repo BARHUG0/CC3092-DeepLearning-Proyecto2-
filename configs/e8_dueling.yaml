@@ -1,0 +1,23 @@
+run_id: e8_dueling
+algoritmo: dqn
+backbone: nature
+dueling: true
+pasos: 2000000
+semilla: 42
+escala_grises: true
+n_apilados: 4
+hiperparametros:
+  learning_rate: 0.0001
+  buffer_size: 100000
+  batch_size: 32
+  train_freq: 4
+  gradient_steps: 1
+  target_update_interval: 1000
+  exploration_fraction: 0.1
+  exploration_final_eps: 0.01
+  learning_starts: 50000
+  gamma: 0.99
+evaluacion:
+  freq_pasos: 100000
+  n_episodios: 5
+  checkpoint_cada_pasos: 250000

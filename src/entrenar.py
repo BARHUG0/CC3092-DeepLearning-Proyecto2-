@@ -33,12 +33,19 @@ def construir_modelo(config: dict, vec_env) -> DQN | PPO:
         tensorboard_log=os.path.join("modelos", config["run_id"], "tensorboard"),
     )
     if config["algoritmo"] == "dqn":
+        clase_politica: str | type = "CnnPolicy"
         if config.get("dueling", False):
-            politica_kwargs["policy_class"] = politicas.PoliticaDuelingDQN
-        return DQN("CnnPolicy", vec_env, policy_kwargs=politica_kwargs, **config.get("hiperparametros", {}), **argumentos)
+            clase_politica = politicas.PoliticaDuelingDQN
+        return DQN(clase_politica, vec_env, policy_kwargs=politica_kwargs, **config.get("hiperparametros", {}), **argumentos)
     if config["algoritmo"] == "ppo":
         return PPO("CnnPolicy", vec_env, policy_kwargs=politica_kwargs, **config.get("hiperparametros", {}), **argumentos)
     raise ValueError(f"algoritmo desconocido: {config['algoritmo']}")
+
+
+def _extractor_del_modelo(modelo: DQN | PPO):
+    if hasattr(modelo.policy, "q_net"):
+        return modelo.policy.q_net.features_extractor
+    return modelo.policy.features_extractor
 
 
 def entrenar(config: dict) -> str:
@@ -67,7 +74,7 @@ def entrenar(config: dict) -> str:
             {
                 **config,
                 "fecha": datetime.now().isoformat(),
-                "parametros_extractor": extractores.contar_parametros(modelo.q_net.features_extractor),
+                "parametros_extractor": extractores.contar_parametros(_extractor_del_modelo(modelo)),
                 "cuda": torch.cuda.is_available(),
             },
             archivo,

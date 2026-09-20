@@ -2,7 +2,7 @@ run_id: e6_vgg
 algoritmo: dqn
 backbone: vgg
 dueling: false
-pasos: 2000000
+pasos: 1000000
 semilla: 42
 escala_grises: true
 n_apilados: 4

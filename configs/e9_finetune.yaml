@@ -1,0 +1,23 @@
+run_id: e9_finetune
+algoritmo: dqn
+backbone: nature
+dueling: false
+pasos: 12000000
+semilla: 42
+escala_grises: true
+n_apilados: 4
+hiperparametros:
+  learning_rate: 0.00005
+  buffer_size: 100000
+  batch_size: 32
+  train_freq: 4
+  gradient_steps: 1
+  target_update_interval: 10000
+  exploration_fraction: 0.25
+  exploration_final_eps: 0.02
+  learning_starts: 50000
+  gamma: 0.99
+evaluacion:
+  freq_pasos: 250000
+  n_episodios: 5
+  checkpoint_cada_pasos: 1000000

@@ -13,6 +13,7 @@ import extractores
 import politicas
 from stable_baselines3 import DQN, PPO
 from stable_baselines3.common.callbacks import CheckpointCallback, EvalCallback
+from stable_baselines3.common.utils import get_schedule_fn
 from stable_baselines3.common.torch_layers import NatureCNN
 
 from entorno import crear_entornos_vectorizados
@@ -61,6 +62,11 @@ def cargar_para_reanudar(config: dict, carpeta: str, vec_env) -> DQN | PPO | Non
     print(f"reanudando desde {os.path.basename(ruta)}, {modelo.num_timesteps} pasos ya entrenados")
     if config["algoritmo"] == "dqn":
         print("aviso: el replay buffer no se guarda, el agente reanuda con memoria vacia")
+    hiperparametros = config.get("hiperparametros", {})
+    if "learning_rate" in hiperparametros:
+        modelo.learning_rate = hiperparametros["learning_rate"]
+        modelo.lr_schedule = get_schedule_fn(hiperparametros["learning_rate"])
+        print(f"learning_rate actualizado a {hiperparametros['learning_rate']}")
     return modelo
 
 

@@ -71,7 +71,7 @@ def generar_video(
     n_episodios: int = 1,
     semilla: int = 0,
     escala_grises: bool = True,
-) -> list[str]:
+) -> tuple[list[str], list[float]]:
     env = crear_entorno(
         NOMBRE_ENTORNO,
         video_folder=carpeta_video,
@@ -80,12 +80,13 @@ def generar_video(
         repeat_action_probability=0.0,
         full_action_space=False,
         render_mode="rgb_array",
-        episode_trigger=lambda episodio_id: episodio_id > 0,
+        episode_trigger=lambda episodio_id: True,
     )
     env = envolver_atari(env, escala_grises=escala_grises, vida_termina_episodio=False, recorte_recompensa=False)
     env = ApiladorFrames(env, n_apilados=4)
-    rutas = ejecutar_episodios(modelo, env, n_episodios, semilla)
-    return sorted(os.path.normpath(r) for r in glob.glob(os.path.join(carpeta_video, "**", "*.mp4"), recursive=True))
+    puntajes = ejecutar_episodios(modelo, env, n_episodios, semilla)
+    rutas = sorted(os.path.normpath(r) for r in glob.glob(os.path.join(carpeta_video, "**", "*.mp4"), recursive=True))
+    return rutas, puntajes
 
 
 if __name__ == "__main__":
@@ -109,7 +110,7 @@ if __name__ == "__main__":
     rutas_video = []
     if argumentos.video:
         os.makedirs(argumentos.video, exist_ok=True)
-        rutas_video = generar_video(
+        rutas_video, _ = generar_video(
             modelo,
             argumentos.video,
             n_episodios=argumentos.episodios_video,

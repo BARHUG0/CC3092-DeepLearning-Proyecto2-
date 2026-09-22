@@ -45,10 +45,10 @@ def predecir(modelo: DQN | PPO, observacion) -> int:
 
 def ejecutar_episodios(modelo: DQN | PPO, env, n_episodios: int, semilla: int) -> list[float]:
     puntajes = []
-    env.reset(seed=semilla)
     try:
         for episodio in range(n_episodios):
-            resultado = ejecutar_episodio(env, lambda observacion, ent: predecir(modelo, observacion))
+            seed_ep = semilla if episodio == 0 else None
+            resultado = ejecutar_episodio(env, lambda observacion, ent: predecir(modelo, observacion), seed=seed_ep)
             puntajes.append(resultado["recompensa_total"])
             print(f"episodio {episodio}: {resultado['recompensa_total']:.0f} puntos, {resultado['pasos']} pasos")
     finally:

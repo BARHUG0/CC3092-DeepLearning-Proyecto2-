@@ -38,9 +38,12 @@ def _mapear_acciones(env: gym.Env) -> dict[str, int] | None:
     significados = entorno_base.get_action_meanings()
     return {nombre.upper(): indice for indice, nombre in enumerate(significados)}
 
-def ejecutar_episodio(env: gym.Env, funcion_agente: Callable[[Any, gym.Env], int], max_steps: int = 10000) -> dict:
+def ejecutar_episodio(env: gym.Env, funcion_agente: Callable[[Any, gym.Env], int], max_steps: int = 10000, seed: int | None = None) -> dict:
     """Ejecuta un episodio completo y devuelve pasos y recompensa acumulada."""
-    observacion, _ = env.reset()
+    if seed is not None:
+        observacion, _ = env.reset(seed=seed)
+    else:
+        observacion, _ = env.reset()
     recompensa_total = 0.0
     pasos = 0
     terminado = False
